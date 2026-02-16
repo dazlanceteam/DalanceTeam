@@ -24,24 +24,16 @@ function cn(...inputs: (string | undefined | null | false)[]) {
 
 // --- Zod Schema ---
 
-const WORK_CAPACITY_OPTIONS = ['full-time', 'part-time', 'project-based'] as const;
-const EXPERIENCE_LEVEL_OPTIONS = ['junior', 'mid-level', 'senior'] as const;
-const CRYPTO_NETWORK_OPTIONS = ['TRC20', 'ERC20', 'BEP20'] as const;
-
 // Base schema for shared fields
 const baseSchema = z.object({
     // Section 1
-    workCapacity: z.enum(WORK_CAPACITY_OPTIONS as unknown as [string, ...string[]], {
-        errorMap: () => ({ message: "Please select your work capacity." })
-    }),
+    workCapacity: z.enum(['full-time', 'part-time', 'project-based'] as [string, ...string[]]),
     timeZone: z.string().min(1, "Time zone is required."),
     startDate: z.string().min(1, "Start date is required."),
 
     // Section 2
     primarySkills: z.array(z.string()).min(1, "Select at least one skill."),
-    experienceLevel: z.enum(EXPERIENCE_LEVEL_OPTIONS as unknown as [string, ...string[]], {
-        errorMap: () => ({ message: "Please select your experience level." })
-    }),
+    experienceLevel: z.enum(['junior', 'mid-level', 'senior'] as [string, ...string[]]),
     portfolioUrl: z.string().url("Must be a valid URL."),
 
     // Tax Declaration
@@ -66,9 +58,7 @@ const wiseSchema = z.object({
 
 const cryptoSchema = z.object({
     paymentMethod: z.literal('crypto'),
-    network: z.enum(CRYPTO_NETWORK_OPTIONS as unknown as [string, ...string[]], {
-        errorMap: () => ({ message: "Select a network." })
-    }),
+    network: z.enum(['TRC20', 'ERC20', 'BEP20'] as [string, ...string[]]),
     walletAddress: z.string().min(1, "Wallet Address is required."),
 });
 
