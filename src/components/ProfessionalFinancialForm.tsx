@@ -188,8 +188,7 @@ export default function ProfessionalFinancialForm() {
 
         if (success) {
             console.log('Final Application Submission:', finalData);
-            alert('Onboarding Complete! Welcome to the team. Features saved to database.');
-            // navigate('/dashboard');
+            navigate('/success');
         } else {
             alert('Failed to save to database. Check console for details.');
         }

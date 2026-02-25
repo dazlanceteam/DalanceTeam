@@ -5,6 +5,8 @@ import { lazy, Suspense } from 'react';
 import { FormLayout } from './layouts/FormLayout';
 
 // Lazy loaded page components
+const Home = lazy(() => import('./components/Home'));
+const Success = lazy(() => import('./components/Success'));
 const IntakeForm = lazy(() => import('./components/IntakeForm'));
 const DigitalPresenceForm = lazy(() => import('./components/DigitalPresenceForm'));
 const ProfessionalFinancialForm = lazy(() => import('./components/ProfessionalFinancialForm'));
@@ -19,15 +21,26 @@ const PageLoader = () => (
 export const router = createBrowserRouter([
     {
         path: '/',
+        element: (
+            <Suspense fallback={<PageLoader />}>
+                <Home />
+            </Suspense>
+        ),
+        errorElement: <Navigate to="/" replace />,
+    },
+    {
+        path: '/success',
+        element: (
+            <Suspense fallback={<PageLoader />}>
+                <Success />
+            </Suspense>
+        ),
+    },
+    {
         element: <FormLayout />,
-        errorElement: <Navigate to="/basicinfo" replace />,
         children: [
             {
-                index: true,
-                element: <Navigate to="/basicinfo" replace />,
-            },
-            {
-                path: 'basicinfo',
+                path: '/basicinfo',
                 element: (
                     <Suspense fallback={<PageLoader />}>
                         <IntakeForm />
@@ -35,7 +48,7 @@ export const router = createBrowserRouter([
                 ),
             },
             {
-                path: 'requirements',
+                path: '/requirements',
                 element: (
                     <Suspense fallback={<PageLoader />}>
                         <DigitalPresenceForm />
@@ -43,7 +56,7 @@ export const router = createBrowserRouter([
                 ),
             },
             {
-                path: 'finish',
+                path: '/finish',
                 element: (
                     <Suspense fallback={<PageLoader />}>
                         <ProfessionalFinancialForm />
@@ -54,6 +67,6 @@ export const router = createBrowserRouter([
     },
     {
         path: '*',
-        element: <Navigate to="/basicinfo" replace />,
+        element: <Navigate to="/" replace />,
     }
 ]);
