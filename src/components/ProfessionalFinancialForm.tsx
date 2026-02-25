@@ -75,29 +75,81 @@ const SKILL_OPTIONS = [
     'React.js', 'Next.js', 'Node.js', 'React Native', 'Python/Django', 'WordPress', 'Shopify'
 ];
 
-interface ProfessionalFinancialFormProps {
-    onBack: () => void;
-    onSubmit: (data: ProfileValues) => void;
-}
+import { useEffect } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import type { FormContextType } from '../layouts/FormLayout';
+import { useSupabaseForm } from '../hooks/useSupabaseForm';
 
-export default function ProfessionalFinancialForm({ onBack, onSubmit }: ProfessionalFinancialFormProps) {
+
+export default function ProfessionalFinancialForm() {
+    const navigate = useNavigate();
+    const { formData, updateFormData, sessionId } = useOutletContext<FormContextType>();
+    const { fetchLatestEntry, saveEntry, isLoading } = useSupabaseForm('Finish');
+
     const {
         control,
         handleSubmit,
         watch,
         setValue,
+        getValues,
+        reset,
         formState: { errors }
     } = useForm<ProfileValues>({
         resolver: zodResolver(profileSchema),
         defaultValues: {
-            primarySkills: [],
-            taxDeclaration: false,
-            // Default to bank to avoid discrimination issues initially or handle empty state?
-            // Zod discriminated union needs the discriminator to be present.
-            // Let's set a default or handle 'undefined' carefully in UI but Zod needs a valid one for valid submission.
-            paymentMethod: 'bank',
+            // Restore any previously entered values in this step
+            workCapacity: formData.workCapacity,
+            timeZone: formData.timeZone,
+            startDate: formData.startDate,
+            primarySkills: formData.primarySkills || [],
+            experienceLevel: formData.experienceLevel,
+            portfolioUrl: formData.portfolioUrl,
+            taxDeclaration: formData.taxDeclaration || false,
+            paymentMethod: formData.paymentMethod || 'bank',
+            bankName: formData.bankName,
+            accountNumber: formData.accountNumber,
+            branchCode: formData.branchCode,
+            accountHolderName: formData.accountHolderName,
+            wiseEmail: formData.wiseEmail,
+            network: formData.network,
+            walletAddress: formData.walletAddress,
         }
     });
+
+    useEffect(() => {
+        if (sessionId) {
+            fetchLatestEntry(sessionId).then((dbData) => {
+                if (dbData) {
+                    const mappedData: any = {
+                        workCapacity: dbData.Work_capacity || 'full-time',
+                        timeZone: dbData.Time_zone || '',
+                        startDate: dbData.Start_date || '',
+                        primarySkills: dbData.Skills ? dbData.Skills.split(', ') : [],
+                        experienceLevel: dbData.Experience_level || 'mid-level',
+                        portfolioUrl: dbData.Portfolio || '',
+                        taxDeclaration: false,
+                        paymentMethod: dbData.Payment_method || 'bank',
+                    };
+
+                    if (dbData.Payment_method === 'bank') {
+                        mappedData.bankName = dbData.Bank || '';
+                        mappedData.accountNumber = dbData.Account_no || '';
+                        mappedData.branchCode = dbData.Branch_code || '';
+                        mappedData.accountHolderName = dbData.Holder_name || '';
+                    } else if (dbData.Payment_method === 'wise') {
+                        mappedData.wiseEmail = dbData.Account_no || '';
+                    } else if (dbData.Payment_method === 'crypto') {
+                        mappedData.network = dbData.Branch_code || '';
+                        mappedData.walletAddress = dbData.Account_no || '';
+                    }
+
+                    reset(mappedData);
+                    updateFormData(mappedData);
+                }
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, fetchLatestEntry, reset]);
 
     const paymentMethod = watch('paymentMethod');
     const selectedSkills = watch('primarySkills') || [];
@@ -110,6 +162,59 @@ export default function ProfessionalFinancialForm({ onBack, onSubmit }: Professi
         } else {
             setValue('primarySkills', [...current, skill]);
         }
+    };
+
+    const handleFormSubmit = async (data: ProfileValues) => {
+        // Construct the final data object consisting of all 3 steps
+        const finalData = { ...formData, ...data };
+        updateFormData(data);
+
+        // Map frontend payload to database schema
+        const payload = {
+            Work_capacity: data.workCapacity,
+            Time_zone: data.timeZone,
+            Start_date: data.startDate,
+            Skills: data.primarySkills.join(', '),
+            Experience_level: data.experienceLevel,
+            Portfolio: data.portfolioUrl,
+            Payment_method: data.paymentMethod,
+            Bank: data.paymentMethod === 'bank' ? data.bankName : (data.paymentMethod === 'wise' ? 'Wise' : 'Crypto'),
+            Account_no: data.paymentMethod === 'bank' ? data.accountNumber : (data.paymentMethod === 'wise' ? data.wiseEmail : data.walletAddress),
+            Branch_code: data.paymentMethod === 'bank' ? data.branchCode : (data.paymentMethod === 'crypto' ? data.network : ""),
+            Holder_name: data.paymentMethod === 'bank' ? data.accountHolderName : ""
+        };
+
+        const success = await saveEntry(sessionId, payload);
+
+        if (success) {
+            console.log('Final Application Submission:', finalData);
+            alert('Onboarding Complete! Welcome to the team. Features saved to database.');
+            // navigate('/dashboard');
+        } else {
+            alert('Failed to save to database. Check console for details.');
+        }
+    };
+
+    const handleBack = async () => {
+        const data = getValues();
+        updateFormData(data);
+
+        const payload = {
+            Work_capacity: data.workCapacity,
+            Time_zone: data.timeZone,
+            Start_date: data.startDate,
+            Skills: data.primarySkills.join(', '),
+            Experience_level: data.experienceLevel,
+            Portfolio: data.portfolioUrl,
+            Payment_method: data.paymentMethod,
+            Bank: data.paymentMethod === 'bank' ? data.bankName : (data.paymentMethod === 'wise' ? 'Wise' : 'Crypto'),
+            Account_no: data.paymentMethod === 'bank' ? data.accountNumber : (data.paymentMethod === 'wise' ? data.wiseEmail : data.walletAddress),
+            Branch_code: data.paymentMethod === 'bank' ? data.branchCode : (data.paymentMethod === 'crypto' ? data.network : ""),
+            Holder_name: data.paymentMethod === 'bank' ? data.accountHolderName : ""
+        };
+
+        await saveEntry(sessionId, payload);
+        navigate('/requirements'); // Navigate to step 2
     };
 
     return (
@@ -128,7 +233,17 @@ export default function ProfessionalFinancialForm({ onBack, onSubmit }: Professi
                     </p>
                 </div>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-10">
+                {isLoading && (
+                    <div className="mx-auto w-full max-w-sm p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-4 w-4 text-blue-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Syncing with database...
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-10">
 
                     {/* Section 1: Availability */}
                     <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -415,16 +530,18 @@ export default function ProfessionalFinancialForm({ onBack, onSubmit }: Professi
                     <div className="flex justify-between pt-4">
                         <button
                             type="button"
-                            onClick={onBack}
-                            className="inline-flex justify-center rounded-lg border border-gray-200 bg-white py-3 px-8 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
+                            onClick={handleBack}
+                            disabled={isLoading}
+                            className="inline-flex justify-center rounded-lg border border-gray-200 bg-white py-3 px-8 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Back
                         </button>
                         <button
                             type="submit"
-                            className="inline-flex justify-center rounded-lg border border-transparent bg-blue-600 py-3 px-8 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all transform hover:-translate-y-0.5"
+                            disabled={isLoading}
+                            className="inline-flex justify-center rounded-lg border border-transparent bg-blue-600 py-3 px-8 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all transform hover:-translate-y-0.5 disabled:bg-blue-400 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
                         >
-                            Complete Profile
+                            {isLoading ? 'Saving...' : 'Complete Profile'}
                         </button>
                     </div>
 

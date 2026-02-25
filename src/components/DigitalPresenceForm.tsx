@@ -17,7 +17,7 @@ import { ToolCard } from './ui/ToolCard';
 // --- Zod Schema ---
 
 // Helper for conditional validation
-const toolSchema = (valueSchema: z.ZodTypeAny) =>
+const toolSchema = <T extends z.ZodTypeAny>(valueSchema: T) =>
     z.object({
         enabled: z.boolean(),
         value: valueSchema.optional(),
@@ -70,33 +70,61 @@ const checklistSchema = z.object({
     antigravity: toolSchema(z.string().email("Invalid email or format")),
 });
 
+import { useEffect } from 'react';
+import { useNavigate, useOutletContext } from 'react-router-dom';
+import type { FormContextType } from '../layouts/FormLayout';
+import { useSupabaseForm } from '../hooks/useSupabaseForm';
+
+// ... (keep Zod schema definitions)
+
 type ChecklistValues = z.infer<typeof checklistSchema>;
 
-interface DigitalPresenceFormProps {
-    onBack: () => void;
-    onSubmit: (data: ChecklistValues) => void;
-}
+export default function DigitalPresenceForm() {
+    const navigate = useNavigate();
+    const { formData, updateFormData, sessionId } = useOutletContext<FormContextType>();
+    const { fetchLatestEntry, saveEntry, isLoading } = useSupabaseForm('requirements');
 
-export default function DigitalPresenceForm({ onBack, onSubmit }: DigitalPresenceFormProps) {
     const {
         control,
         handleSubmit,
-        formState: { errors }
+        formState: { errors },
+        getValues,
+        reset
     } = useForm<ChecklistValues>({
         resolver: zodResolver(checklistSchema),
         defaultValues: {
-            whatsapp: { enabled: false, value: '' },
-            discord: { enabled: false, value: '' },
-            github: { enabled: false, value: '' },
-            jira: { enabled: false, value: '' },
-            git: { enabled: false, confirmed: false },
-            node: { enabled: false, confirmed: false },
-            antigravity: { enabled: false, value: '' },
+            whatsapp: formData.whatsapp || { enabled: false, value: '' },
+            discord: formData.discord || { enabled: false, value: '' },
+            github: formData.github || { enabled: false, value: '' },
+            jira: formData.jira || { enabled: false, value: '' },
+            git: formData.git || { enabled: false, confirmed: false },
+            node: formData.node || { enabled: false, confirmed: false },
+            antigravity: formData.antigravity || { enabled: false, value: '' },
         }
     });
 
-    const handleFormSubmit: SubmitHandler<ChecklistValues> = (data) => {
-        // Warning if any section is disabled
+    useEffect(() => {
+        if (sessionId) {
+            fetchLatestEntry(sessionId).then((dbData) => {
+                if (dbData) {
+                    const mappedData = {
+                        whatsapp: { enabled: !!dbData.whatsapp, value: dbData.whatsapp || '' },
+                        discord: { enabled: !!dbData.discord, value: dbData.discord || '' },
+                        github: { enabled: !!dbData.github, value: dbData.github || '' },
+                        jira: { enabled: !!dbData.jira, value: dbData.jira || '' },
+                        git: { enabled: !!dbData.git, confirmed: !!dbData.git },
+                        node: { enabled: !!dbData.nodejs, confirmed: !!dbData.nodejs },
+                        antigravity: { enabled: !!dbData.Antigravity, value: dbData.Antigravity || '' },
+                    };
+                    reset(mappedData);
+                    updateFormData(mappedData);
+                }
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sessionId, fetchLatestEntry, reset]);
+
+    const handleFormSubmit: SubmitHandler<ChecklistValues> = async (data) => {
         const tools = ['whatsapp', 'discord', 'github', 'jira', 'git', 'node', 'antigravity'] as const;
         const disabledTools = tools.filter(t => !data[t].enabled);
 
@@ -110,21 +138,55 @@ export default function DigitalPresenceForm({ onBack, onSubmit }: DigitalPresenc
                 },
                 duration: 4000
             });
-        } else {
-            toast.success("All systems go! 🚀");
         }
 
-        // Allow submission anyway (per prompt logic "If toggle OFF, input is optional")
-        // The validation only enforced input IF enabled.
-        // So we just proceed.
-        onSubmit(data);
+        // Save progress to global state
+        updateFormData(data);
+
+        // Map to DB and save
+        const payload = {
+            whatsapp: data.whatsapp.enabled ? data.whatsapp.value : "",
+            discord: data.discord.enabled ? data.discord.value : "",
+            github: data.github.enabled ? data.github.value : "",
+            jira: data.jira.enabled ? data.jira.value : "",
+            git: data.git.enabled ? data.git.confirmed : false,
+            nodejs: data.node.enabled ? data.node.confirmed : false,
+            Antigravity: data.antigravity.enabled ? data.antigravity.value : ""
+        };
+
+        const success = await saveEntry(sessionId, payload);
+
+        if (success) {
+            navigate('/finish');
+        } else {
+            toast.error("Failed to save data to database.");
+        }
+    };
+
+    const handleBack = async () => {
+        // Optionally save current state without validation on back
+        const data = getValues();
+        updateFormData(data);
+
+        const payload = {
+            whatsapp: data.whatsapp.enabled ? data.whatsapp.value : "",
+            discord: data.discord.enabled ? data.discord.value : "",
+            github: data.github.enabled ? data.github.value : "",
+            jira: data.jira.enabled ? data.jira.value : "",
+            git: data.git.enabled ? data.git.confirmed : false,
+            nodejs: data.node.enabled ? data.node.confirmed : false,
+            Antigravity: data.antigravity.enabled ? data.antigravity.value : ""
+        };
+
+        await saveEntry(sessionId, payload);
+        navigate('/basicinfo');
     };
 
     return (
         <div className="min-h-screen bg-gray-50/30 text-gray-800 font-sans selection:bg-blue-100 selection:text-blue-900 pb-20">
             <Toaster position="bottom-right" />
             <Header
-                title="Team Onboarding"
+                title="Team Dazlance"
                 subtitle={<span>Agency Intake <span className="mx-2 text-gray-300">/</span> Digital Presence</span>}
             />
 
@@ -137,6 +199,16 @@ export default function DigitalPresenceForm({ onBack, onSubmit }: DigitalPresenc
                         We don't use many tools, but the ones we use are vital. toggle the ones you are ready to set up.
                     </p>
                 </div>
+
+                {isLoading && (
+                    <div className="mx-auto w-full max-w-sm p-4 mb-4 text-sm text-blue-800 rounded-lg bg-blue-50 flex items-center justify-center gap-2">
+                        <svg className="animate-spin h-4 w-4 text-blue-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Syncing with database...
+                    </div>
+                )}
 
                 <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-10">
 
@@ -361,16 +433,18 @@ export default function DigitalPresenceForm({ onBack, onSubmit }: DigitalPresenc
                     <div className="flex justify-between pt-10 border-t border-gray-100">
                         <button
                             type="button"
-                            onClick={onBack}
-                            className="inline-flex justify-center rounded-lg border border-gray-200 bg-white py-3 px-8 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all"
+                            onClick={handleBack}
+                            disabled={isLoading}
+                            className="inline-flex justify-center rounded-lg border border-gray-200 bg-white py-3 px-8 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Back
                         </button>
                         <button
                             type="submit"
-                            className="inline-flex justify-center rounded-lg border border-transparent bg-blue-600 py-3 px-8 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all transform hover:-translate-y-0.5"
+                            disabled={isLoading}
+                            className="inline-flex justify-center rounded-lg border border-transparent bg-blue-600 py-3 px-8 text-sm font-medium text-white shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all transform hover:-translate-y-0.5 disabled:bg-blue-400 disabled:hover:translate-y-0 disabled:cursor-not-allowed"
                         >
-                            Complete Setup
+                            {isLoading ? 'Saving...' : 'Save & Continue'}
                         </button>
                     </div>
 
